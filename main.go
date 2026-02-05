@@ -29,6 +29,10 @@ func main() {
 }
 
 func initConfig(filename string, text string) {
+	if _, err := os.Stat(filename); err == nil {
+		return
+	}
+
 	file, err := os.OpenFile(filename, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
 	if err != nil {
 		log.Fatalf("failed creating file: %s", err)
