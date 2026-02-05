@@ -1,6 +1,6 @@
 package main
 
-var APP_WEBSITE = "https://github.com/meyt/godnstray"
+var APP_WEBSITE = "https://github.com/meyt/dnstray"
 var CONFIG_FILENAME = "config.toml"
 var CONFIG = `
 [[dns_servers]]

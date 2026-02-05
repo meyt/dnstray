@@ -1,4 +1,4 @@
-module github.com/meyt/godnstray
+module github.com/meyt/dnstray
 
 go 1.20
 

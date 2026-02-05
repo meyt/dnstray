@@ -5,7 +5,7 @@ import (
 	"os"
 
 	"github.com/getlantern/systray"
-	"github.com/meyt/godnstray/icon"
+	"github.com/meyt/dnstray/icon"
 	"github.com/pelletier/go-toml"
 	"github.com/skratchdot/open-golang/open"
 )
