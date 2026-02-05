@@ -12,7 +12,7 @@
 <p align="center">
   <a href="https://github.com/meyt/dnstray/releases"><img src="https://img.shields.io/github/v/release/meyt/dnstray?color=blue&label=Latest%20Release" alt="Latest Release"></a>
   <a href="https://github.com/meyt/dnstray/releases"><img src="https://img.shields.io/github/downloads/meyt/dnstray/total" alt="Total Downloads"></a>
-  <a href="https://github.com/meyt/dnstray/blob/main/LICENSE"><img src="https://img.shields.io/github/license/meyt/dnstray" alt="License"></a>
+  <a href="https://github.com/meyt/dnstray/blob/master/LICENSE"><img src="https://img.shields.io/github/license/meyt/dnstray" alt="License"></a>
 </p>
 
 ## ✨ Features
