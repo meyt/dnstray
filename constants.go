@@ -1,8 +1,15 @@
 package main
 
+import "time"
+
 var APP_WEBSITE = "https://github.com/meyt/dnstray"
-var CONFIG_FILENAME = "config.toml"
+var DNS_APPLY_WAIT = 2 * time.Second
+var CONFIG_FILENAME = "dnstray.toml"
+var WAIT_MARK = "…"
+var CHECK_MARK = "✅"
 var CONFIG = `
+test_domains = ["google.com", "bing.com"]
+
 [[dns_servers]]
 name = "Google"
 dns1 = "8.8.8.8"
