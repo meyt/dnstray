@@ -49,3 +49,4 @@ jobs:
         with:
           files: |
             ./dist/*
+          token: ${{ secrets.GITHUB_TOKEN }}
