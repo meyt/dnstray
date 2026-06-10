@@ -1,7 +1,6 @@
 package main
 
 import (
-	"log"
 	"net/netip"
 	"os"
 	"slices"
@@ -35,6 +34,19 @@ var config Config
 var dnsMenuItems = map[int]*systray.MenuItem{} // index -> menu item
 
 func main() {
+	// Initialize logging first
+	InitLogger()
+
+	LogInfo("Starting dnstray...")
+
+	// Catch panics and log them before exiting
+	defer func() {
+		if r := recover(); r != nil {
+			LogError("PANIC: %v", r)
+			LogError("Application crashed unexpectedly")
+		}
+	}()
+
 	initConfig(CONFIG_FILENAME, CONFIG)
 	loadConfig(CONFIG_FILENAME)
 	systray.Run(onReady, onExit)
@@ -45,34 +57,44 @@ func initConfig(filename string, text string) {
 		return
 	}
 
+	LogInfo("Creating default config file: %s", filename)
+
 	file, err := os.OpenFile(filename, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
 	if err != nil {
-		log.Fatalf("failed creating file: %s", err)
+		LogError("failed creating config file: %s", err)
+		return
 	}
 	defer file.Close()
 
 	_, err = file.WriteString(text)
 	if err != nil {
-		log.Fatalf("failed writing to file: %s", err)
+		LogError("failed writing to config file: %s", err)
+		return
 	}
+
+	LogInfo("Default config file created successfully")
 }
 
 func loadConfig(filename string) {
+	LogInfo("Loading config from: %s", filename)
+
 	configData, err := os.ReadFile(filename)
 	if err != nil {
+		LogError("failed reading config file: %v", err)
 		panic(err)
 	}
 	err = toml.Unmarshal([]byte(configData), &config)
 	if err != nil {
+		LogError("failed parsing config file: %v", err)
 		panic(err)
 	}
+
+	LogInfo("Config loaded: %d DNS servers, %d test domains",
+		len(config.DNSServers), len(config.TEST_DOMAINS))
 }
 
 func testDnsServers() {
 	CheckDNSHealth(config.DNSServers)
-	// for _, item := range dnsMenuItems {
-
-	// }
 }
 
 func autoSelect() {
@@ -85,6 +107,7 @@ func autoSelect() {
 		dnsServers = append(dnsServers, item)
 	}
 	if len(dnsServers) == 0 {
+		LogWarn("No healthy DNS servers found for auto-select")
 		return
 	}
 	fastest := dnsServers[0]
@@ -93,6 +116,7 @@ func autoSelect() {
 			fastest = item
 		}
 	}
+	LogInfo("Auto-selecting fastest DNS: %s (%dms)", fastest.Name, fastest.Latency)
 	activateDnsServer(*fastest)
 }
 
@@ -100,13 +124,17 @@ func loadMenuState() {
 	// load current dns
 	dnsServers, err := GetDNSServers()
 	if err != nil {
+		LogWarn("Failed to get current DNS servers: %v", err)
 		return
 	}
 
 	// update menu items
 	for _, item := range config.DNSServers {
-		dns1 := item.GetAddr1()
-		dns2 := item.GetAddr2()
+		dns1, ok1 := safeParseAddr(item.Dns1)
+		dns2, ok2 := safeParseAddr(item.Dns2)
+		if !ok1 || !ok2 {
+			continue
+		}
 		item.SetIsActive(slices.Contains(dnsServers, dns1) && slices.Contains(dnsServers, dns2))
 	}
 }
@@ -127,14 +155,28 @@ func getDNSMenuTitle(dnsServer DNSServer) string {
 }
 
 func activateDnsServer(item DNSServer) {
+	LogInfo("Activating DNS server: %s (%s, %s)", item.Name, item.Dns1, item.Dns2)
+
 	item.SetIsApplying(true)
-	SetDNS(item.Dns1, item.Dns2)
+	err := SetDNS(item.Dns1, item.Dns2)
+	if err != nil {
+		LogError("Failed to set DNS %s: %v", item.Name, err)
+		item.SetIsApplying(false)
+		return
+	}
 	time.Sleep(DNS_APPLY_WAIT) // wait to apply dns in linux
 	item.SetIsApplying(false)
 	loadMenuState()
+
+	LogInfo("DNS server %s activated successfully", item.Name)
 }
 
 func setupMenu() {
+	defer func() {
+		if r := recover(); r != nil {
+			LogError("PANIC in setupMenu: %v", r)
+		}
+	}()
 
 	for idx, server := range config.DNSServers {
 		item := systray.AddMenuItem(
@@ -144,12 +186,17 @@ func setupMenu() {
 		config.DNSServers[idx].Index = idx
 		dnsMenuItems[idx] = item
 
-		go func(item *systray.MenuItem) {
+		go func(item *systray.MenuItem, server *DNSServer) {
+			defer func() {
+				if r := recover(); r != nil {
+					LogError("PANIC in DNS menu click handler for %s: %v", server.Name, r)
+				}
+			}()
 			for {
 				<-item.ClickedCh
 				activateDnsServer(*server)
 			}
-		}(item)
+		}(item, server)
 	}
 	systray.AddSeparator()
 
@@ -163,7 +210,11 @@ func setupMenu() {
 	for {
 		select {
 		case <-mClear.ClickedCh:
-			SetDNS("", "")
+			LogInfo("Clearing DNS settings")
+			err := SetDNS("", "")
+			if err != nil {
+				LogError("Failed to clear DNS: %v", err)
+			}
 			loadMenuState()
 		case <-mAutoSelect.ClickedCh:
 			mTest.Disable()
@@ -184,6 +235,7 @@ func setupMenu() {
 		case <-mAbout.ClickedCh:
 			open.Run(APP_WEBSITE)
 		case <-mQuit.ClickedCh:
+			LogInfo("User requested exit")
 			systray.Quit()
 			return
 		}
@@ -197,14 +249,31 @@ func onReady() {
 	go setupMenu()
 }
 
-func onExit() {}
-
-func (item *DNSServer) GetAddr1() netip.Addr {
-	return netip.MustParseAddr(item.Dns1)
+func onExit() {
+	LogInfo("Application exiting")
 }
 
-func (item *DNSServer) GetAddr2() netip.Addr {
-	return netip.MustParseAddr(item.Dns2)
+// safeParseAddr safely parses an IP address string, returning the parsed
+// address and true on success, or an empty address and false on failure.
+// This replaces netip.MustParseAddr which panics on invalid input.
+func safeParseAddr(s string) (netip.Addr, bool) {
+	if s == "" {
+		return netip.Addr{}, false
+	}
+	addr, err := netip.ParseAddr(s)
+	if err != nil {
+		LogWarn("Failed to parse DNS address '%s': %v", s, err)
+		return netip.Addr{}, false
+	}
+	return addr, true
+}
+
+func (item *DNSServer) GetAddr1() (netip.Addr, bool) {
+	return safeParseAddr(item.Dns1)
+}
+
+func (item *DNSServer) GetAddr2() (netip.Addr, bool) {
+	return safeParseAddr(item.Dns2)
 }
 
 func (item *DNSServer) SetIsApplying(v bool) {
